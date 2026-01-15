@@ -112,6 +112,60 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Summary Stats - Always visible at top */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-card to-card/50 border border-border/50 p-4">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+          <div className="relative">
+            <div className="text-3xl font-bold text-foreground">{indices.length}</div>
+            <div className="text-sm text-muted-foreground mt-1">Indizes</div>
+          </div>
+        </div>
+        
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-success/10 to-success/5 border border-success/20 p-4">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-success/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+          <div className="relative">
+            <div className="text-3xl font-bold text-success">
+              {hasData ? indices.filter((i) => {
+                const data = chartDataMap[i.id];
+                if (!data || data.length < 2) return false;
+                return data[data.length - 1].value > data[0].value;
+              }).length : "—"}
+            </div>
+            <div className="text-sm text-success/70 mt-1">Steigend</div>
+          </div>
+        </div>
+        
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-destructive/10 to-destructive/5 border border-destructive/20 p-4">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-destructive/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+          <div className="relative">
+            <div className="text-3xl font-bold text-destructive">
+              {hasData ? indices.filter((i) => {
+                const data = chartDataMap[i.id];
+                if (!data || data.length < 2) return false;
+                return data[data.length - 1].value < data[0].value;
+              }).length : "—"}
+            </div>
+            <div className="text-sm text-destructive/70 mt-1">Fallend</div>
+          </div>
+        </div>
+        
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 p-4">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+          <div className="relative">
+            <div className="text-3xl font-bold font-mono text-primary">
+              {hasData ? `$${Object.values(chartDataMap).reduce((sum, data) => {
+                if (data && data.length > 0) {
+                  return sum + data[data.length - 1].value;
+                }
+                return sum;
+              }, 0).toLocaleString()}` : "—"}
+            </div>
+            <div className="text-sm text-primary/70 mt-1">Gesamtwert</div>
+          </div>
+        </div>
+      </div>
+
       {/* Info Banner */}
       {!hasData && (
         <div className="bg-muted/30 border border-border/50 rounded-lg p-4 text-center">
@@ -139,47 +193,6 @@ export default function Dashboard() {
           ))
         )}
       </div>
-
-      {/* Summary Stats */}
-      {hasData && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-border/50">
-          <div className="bg-card/50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-foreground">{indices.length}</div>
-            <div className="text-sm text-muted-foreground">Indizes</div>
-          </div>
-          <div className="bg-card/50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-success">
-              {indices.filter((i) => {
-                const data = chartDataMap[i.id];
-                if (!data || data.length < 2) return false;
-                return data[data.length - 1].value > data[0].value;
-              }).length}
-            </div>
-            <div className="text-sm text-muted-foreground">Steigend</div>
-          </div>
-          <div className="bg-card/50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-destructive">
-              {indices.filter((i) => {
-                const data = chartDataMap[i.id];
-                if (!data || data.length < 2) return false;
-                return data[data.length - 1].value < data[0].value;
-              }).length}
-            </div>
-            <div className="text-sm text-muted-foreground">Fallend</div>
-          </div>
-          <div className="bg-card/50 rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold font-mono text-foreground">
-              ${Object.values(chartDataMap).reduce((sum, data) => {
-                if (data && data.length > 0) {
-                  return sum + data[data.length - 1].value;
-                }
-                return sum;
-              }, 0).toLocaleString()}
-            </div>
-            <div className="text-sm text-muted-foreground">Gesamtwert</div>
-          </div>
-        </div>
-      )}
 
       {/* Chart Modal */}
       {chartModalIndex && (
