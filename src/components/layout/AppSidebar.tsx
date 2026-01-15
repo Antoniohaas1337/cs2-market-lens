@@ -18,15 +18,15 @@ const navItems = [
   {
     title: "Dashboard",
     url: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Übersicht",
-    url: "/overview",
     icon: BarChart3,
   },
   {
-    title: "Create Index",
+    title: "Indizes verwalten",
+    url: "/manage",
+    icon: LayoutDashboard,
+  },
+  {
+    title: "Neuer Index",
     url: "/create",
     icon: Plus,
   },
