@@ -1,4 +1,4 @@
-import { LayoutDashboard, Plus, TrendingUp, Menu } from "lucide-react";
+import { LayoutDashboard, Plus, TrendingUp, Menu, BarChart3 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
@@ -19,6 +19,11 @@ const navItems = [
     title: "Dashboard",
     url: "/",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Übersicht",
+    url: "/overview",
+    icon: BarChart3,
   },
   {
     title: "Create Index",
