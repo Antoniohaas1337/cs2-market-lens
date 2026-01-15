@@ -4,8 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
-import Index from "./pages/Index";
-import Overview from "./pages/Overview";
+import Dashboard from "./pages/Dashboard";
+import ManageIndices from "./pages/ManageIndices";
 import CreateIndex from "./pages/CreateIndex";
 import EditIndex from "./pages/EditIndex";
 import NotFound from "./pages/NotFound";
@@ -20,8 +20,8 @@ const App = () => (
       <BrowserRouter>
         <MainLayout>
           <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/overview" element={<Overview />} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/manage" element={<ManageIndices />} />
             <Route path="/create" element={<CreateIndex />} />
             <Route path="/edit/:id" element={<EditIndex />} />
             <Route path="*" element={<NotFound />} />
