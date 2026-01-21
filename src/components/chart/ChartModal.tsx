@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
-import { X, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Loader2, Clock, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PriceChart } from "./PriceChart";
 import { ChartData, TimeRange } from "@/types";
-import { getMockChartData } from "@/data/mockData";
+import * as api from "@/api/client";
+import { formatRelativeTime, filterPricePointsByDays } from "@/lib/dateUtils";
 import { cn } from "@/lib/utils";
 
 interface ChartModalProps {
@@ -12,6 +13,7 @@ interface ChartModalProps {
   onOpenChange: (open: boolean) => void;
   indexId: number;
   indexName: string;
+  cachedData: PricePoint[] | null;
 }
 
 const TIME_RANGES: { value: TimeRange; label: string }[] = [
@@ -22,31 +24,129 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: "365", label: "1 Year" },
 ];
 
-export function ChartModal({ open, onOpenChange, indexId, indexName }: ChartModalProps) {
-  const [timeRange, setTimeRange] = useState<TimeRange>("30");
-  const [chartData, setChartData] = useState<ChartData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+// Maximum days to load
+const MAX_DAYS = 365;
 
+interface CachedChartData {
+  fullData: ChartData;
+  loadedAt: Date;
+}
+
+export function ChartModal({ open, onOpenChange, indexId, indexName, cachedData: propsData }: ChartModalProps) {
+  const [timeRange, setTimeRange] = useState<TimeRange>("30");
+  const [loadedData, setLoadedData] = useState<CachedChartData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Use cached data from props if available, otherwise use loaded data
+  const fullData = useMemo(() => {
+    if (propsData && propsData.length > 0) {
+      // Convert PricePoint[] to ChartData format
+      return {
+        index_id: indexId,
+        index_name: indexName,
+        currency: "USD",
+        days: MAX_DAYS,
+        item_count: 0,
+        markets_used: [],
+        data_points: propsData,
+      };
+    }
+    return loadedData?.fullData || null;
+  }, [propsData, loadedData, indexId, indexName]);
+
+  // Filter data based on selected time range (client-side only)
+  const chartData = useMemo(() => {
+    if (!fullData) return null;
+
+    const days = parseInt(timeRange);
+    const filteredPoints = filterPricePointsByDays(fullData.data_points, days);
+
+    return {
+      ...fullData,
+      days,
+      data_points: filteredPoints,
+    };
+  }, [fullData, timeRange]);
+
+  // Determine when data was loaded
+  const loadedAt = useMemo(() => {
+    if (propsData && propsData.length > 0) {
+      return new Date(); // Use current time for cached data from Dashboard
+    }
+    return loadedData?.loadedAt || null;
+  }, [propsData, loadedData]);
+
+  // Load full data only when modal opens and no cached data is available
   useEffect(() => {
-    if (open && indexId) {
+    if (open && indexId && !propsData && !loadedData) {
       loadChartData();
     }
-  }, [open, indexId, timeRange]);
+  }, [open, indexId, propsData, loadedData]);
 
   const loadChartData = async () => {
     setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const data = getMockChartData(indexId, parseInt(timeRange));
-    setChartData(data);
-    setIsLoading(false);
+    setError(null);
+    try {
+      // Load full year of data using robust endpoint with illiquidity handling
+      const response = await api.getRobustSalesHistory(indexId, MAX_DAYS);
+      const data: ChartData = {
+        index_id: response.index_id,
+        index_name: response.index_name,
+        currency: response.currency,
+        days: response.days,
+        item_count: response.item_count,
+        markets_used: response.markets_used,
+        data_points: response.data_points.map((dp) => ({
+          timestamp: dp.timestamp,
+          value: dp.value,
+        })),
+      };
+      setLoadedData({
+        fullData: data,
+        loadedAt: new Date(),
+      });
+    } catch (err) {
+      console.error('Failed to load chart data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+      setLoadedData(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Time range change only filters client-side (no API calls)
+  const handleTimeRangeChange = (newRange: TimeRange) => {
+    setTimeRange(newRange);
+    // Data is automatically filtered via useMemo above
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl bg-card border-border">
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">{indexName}</DialogTitle>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-xl font-semibold">{indexName}</DialogTitle>
+              {loadedAt && (
+                <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  <span>Aktualisiert {formatRelativeTime(loadedAt)}</span>
+                </div>
+              )}
+            </div>
+            {fullData && !isLoading && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadChartData}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Aktualisieren
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         {/* Time Range Selector */}
@@ -56,7 +156,8 @@ export function ChartModal({ open, onOpenChange, indexId, indexName }: ChartModa
               key={range.value}
               variant={timeRange === range.value ? "default" : "outline"}
               size="sm"
-              onClick={() => setTimeRange(range.value)}
+              onClick={() => handleTimeRangeChange(range.value)}
+              disabled={isLoading}
               className={cn(
                 "transition-all",
                 timeRange === range.value && "shadow-glow"
@@ -73,11 +174,21 @@ export function ChartModal({ open, onOpenChange, indexId, indexName }: ChartModa
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="text-sm text-muted-foreground">Loading chart data...</p>
+              <p className="text-xs text-muted-foreground">
+                Lädt 1 Jahr Historie mit robuster Preisberechnung
+              </p>
             </div>
-          ) : chartData ? (
+          ) : error ? (
+            <div className="text-center">
+              <p className="text-destructive mb-2">{error}</p>
+              <Button variant="outline" size="sm" onClick={loadChartData}>
+                Retry
+              </Button>
+            </div>
+          ) : chartData && chartData.data_points.length > 0 ? (
             <PriceChart data={chartData} />
           ) : (
-            <p className="text-muted-foreground">No data available</p>
+            <p className="text-muted-foreground">No data available for this time range</p>
           )}
         </div>
       </DialogContent>

@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { DashboardProvider } from "@/contexts/DashboardContext";
 import Dashboard from "./pages/Dashboard";
 import ManageIndices from "./pages/ManageIndices";
 import CreateIndex from "./pages/CreateIndex";
@@ -15,19 +16,21 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <MainLayout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/manage" element={<ManageIndices />} />
-            <Route path="/create" element={<CreateIndex />} />
-            <Route path="/edit/:id" element={<EditIndex />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </MainLayout>
-      </BrowserRouter>
+      <DashboardProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <MainLayout>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/manage" element={<ManageIndices />} />
+              <Route path="/create" element={<CreateIndex />} />
+              <Route path="/edit/:id" element={<EditIndex />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </MainLayout>
+        </BrowserRouter>
+      </DashboardProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

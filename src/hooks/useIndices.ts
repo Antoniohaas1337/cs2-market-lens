@@ -1,27 +1,80 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { MarketIndex, Item } from "@/types";
-import { MOCK_INDICES, MOCK_ITEMS } from "@/data/mockData";
-
-// Simulate API delay
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import * as api from "@/api/client";
 
 export function useIndices() {
-  const [indices, setIndices] = useState<MarketIndex[]>(MOCK_INDICES);
-  const [isLoading, setIsLoading] = useState(false);
+  const [indices, setIndices] = useState<MarketIndex[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Transform API response to frontend type
+  const transformIndex = (apiIndex: api.IndexResponse | api.IndexDetailResponse): MarketIndex => {
+    try {
+      const items = 'items' in apiIndex && apiIndex.items
+        ? apiIndex.items.map((item) => ({
+            id: item.id,
+            market_hash_name: item.market_hash_name,
+            type: item.type || 'Unknown',
+          }))
+        : undefined;
+
+      // Ensure selected_markets is an array
+      const selectedMarkets = Array.isArray(apiIndex.selected_markets)
+        ? apiIndex.selected_markets
+        : [];
+
+      return {
+        id: apiIndex.id,
+        name: apiIndex.name,
+        description: apiIndex.description || undefined,
+        type: apiIndex.type,
+        selected_markets: selectedMarkets,
+        currency: apiIndex.currency,
+        item_count: apiIndex.item_count,
+        latest_price: apiIndex.latest_price,
+        items,
+      };
+    } catch (error) {
+      console.error('Error transforming index:', error, 'apiIndex:', apiIndex);
+      throw error;
+    }
+  };
+
+  // Fetch all indices on mount
   const fetchIndices = useCallback(async () => {
     setIsLoading(true);
-    await delay(500);
-    setIsLoading(false);
-    return indices;
-  }, [indices]);
+    setError(null);
+    try {
+      const response = await api.getIndices();
+      const transformed = response.indices.map(transformIndex);
+      setIndices(transformed);
+      return transformed;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch indices';
+      setError(message);
+      console.error('Failed to fetch indices:', err);
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchIndices();
+  }, [fetchIndices]);
 
   const getIndex = useCallback(
     async (id: number): Promise<MarketIndex | undefined> => {
-      await delay(300);
-      return indices.find((i) => i.id === id);
+      try {
+        const response = await api.getIndex(id);
+        return transformIndex(response);
+      } catch (err) {
+        console.error('Failed to fetch index:', err);
+        return undefined;
+      }
     },
-    [indices]
+    []
   );
 
   const createIndex = useCallback(
@@ -31,18 +84,21 @@ export function useIndices() {
       selectedMarkets: string[];
       selectedItems: Item[];
     }): Promise<MarketIndex> => {
-      await delay(500);
-      const newIndex: MarketIndex = {
-        id: Date.now(),
+      const payload: api.CreateIndexPayload = {
         name: data.name,
         description: data.description || undefined,
-        type: "CUSTOM",
+        type: 'CUSTOM',
         selected_markets: data.selectedMarkets,
-        currency: "USD",
-        item_count: data.selectedItems.length,
-        latest_price: null,
-        items: data.selectedItems,
+        currency: 'USD',
+        item_ids: data.selectedItems.map((item) => item.id),
       };
+
+      const response = await api.createIndex(payload);
+      const newIndex = transformIndex(response);
+
+      // Add items to the new index for local state
+      newIndex.items = data.selectedItems;
+
       setIndices((prev) => [...prev, newIndex]);
       return newIndex;
     },
@@ -59,49 +115,59 @@ export function useIndices() {
         selectedItems: Item[];
       }
     ): Promise<MarketIndex | undefined> => {
-      await delay(500);
-      let updatedIndex: MarketIndex | undefined;
-      setIndices((prev) =>
-        prev.map((index) => {
-          if (index.id === id) {
-            updatedIndex = {
-              ...index,
-              name: data.name,
-              description: data.description || undefined,
-              selected_markets: data.selectedMarkets,
-              item_count: data.selectedItems.length,
-              items: data.selectedItems,
-            };
-            return updatedIndex;
-          }
-          return index;
-        })
-      );
-      return updatedIndex;
+      try {
+        console.log('Updating index:', id, 'with data:', data);
+
+        const payload: api.UpdateIndexPayload = {
+          name: data.name,
+          description: data.description || undefined,
+          selected_markets: data.selectedMarkets,
+          item_ids: data.selectedItems.map((item) => item.id),
+        };
+
+        console.log('Update payload:', payload);
+
+        const response = await api.updateIndex(id, payload);
+        console.log('Update response:', response);
+
+        const updatedIndex = transformIndex(response);
+        updatedIndex.items = data.selectedItems;
+
+        setIndices((prev) =>
+          prev.map((index) => (index.id === id ? updatedIndex : index))
+        );
+
+        console.log('Index updated successfully');
+        return updatedIndex;
+      } catch (error) {
+        console.error('Error in updateIndex:', error);
+        throw error;
+      }
     },
     []
   );
 
   const deleteIndex = useCallback(async (id: number): Promise<void> => {
-    await delay(300);
+    await api.deleteIndex(id);
     setIndices((prev) => prev.filter((index) => index.id !== id));
   }, []);
 
   const calculatePrice = useCallback(async (id: number): Promise<number> => {
-    await delay(1000);
-    // Generate a random price for demo
-    const price = Math.round((Math.random() * 50000 + 1000) * 100) / 100;
+    const response = await api.calculatePrice(id);
+
     setIndices((prev) =>
       prev.map((index) =>
-        index.id === id ? { ...index, latest_price: price } : index
+        index.id === id ? { ...index, latest_price: response.value } : index
       )
     );
-    return price;
+
+    return response.value;
   }, []);
 
   return {
     indices,
     isLoading,
+    error,
     fetchIndices,
     getIndex,
     createIndex,

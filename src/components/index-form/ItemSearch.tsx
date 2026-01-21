@@ -3,8 +3,7 @@ import { Search, X, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Item } from "@/types";
-import { searchItems } from "@/data/mockData";
-import { cn } from "@/lib/utils";
+import * as api from "@/api/client";
 
 interface ItemSearchProps {
   selectedItems: Item[];
@@ -17,6 +16,7 @@ export function ItemSearch({ selectedItems, onAddItem, onRemoveItem }: ItemSearc
   const [results, setResults] = useState<Item[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout>();
 
@@ -35,7 +35,8 @@ export function ItemSearch({ selectedItems, onAddItem, onRemoveItem }: ItemSearc
   // Debounced search
   const handleSearch = useCallback((value: string) => {
     setQuery(value);
-    
+    setError(null);
+
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
@@ -47,15 +48,28 @@ export function ItemSearch({ selectedItems, onAddItem, onRemoveItem }: ItemSearc
     }
 
     setIsSearching(true);
-    debounceRef.current = setTimeout(() => {
-      const searchResults = searchItems(value);
-      // Filter out already selected items
-      const filteredResults = searchResults.filter(
-        (item) => !selectedItems.some((selected) => selected.id === item.id)
-      );
-      setResults(filteredResults);
-      setShowResults(true);
-      setIsSearching(false);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const response = await api.searchItems(value, 20);
+        // Transform API response to frontend Item type
+        const transformedItems: Item[] = response.items.map((item) => ({
+          id: item.id,
+          market_hash_name: item.market_hash_name,
+          type: item.type || 'Unknown',
+        }));
+        // Filter out already selected items
+        const filteredResults = transformedItems.filter(
+          (item) => !selectedItems.some((selected) => selected.id === item.id)
+        );
+        setResults(filteredResults);
+        setShowResults(true);
+      } catch (err) {
+        console.error('Search failed:', err);
+        setError(err instanceof Error ? err.message : 'Search failed');
+        setResults([]);
+      } finally {
+        setIsSearching(false);
+      }
     }, 300);
   }, [selectedItems]);
 
@@ -110,7 +124,7 @@ export function ItemSearch({ selectedItems, onAddItem, onRemoveItem }: ItemSearc
         {showResults && query.length >= 3 && results.length === 0 && !isSearching && (
           <div className="absolute z-50 w-full mt-2 p-4 rounded-lg border border-border bg-popover shadow-lg">
             <p className="text-sm text-muted-foreground text-center">
-              No items found. Try refining your search.
+              {error ? error : "No items found. Try refining your search."}
             </p>
           </div>
         )}

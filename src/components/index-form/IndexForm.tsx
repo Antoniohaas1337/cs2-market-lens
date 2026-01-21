@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { MarketSelector } from "./MarketSelector";
 import { ItemSearch } from "./ItemSearch";
 import { Item, MarketIndex } from "@/types";
-import { AVAILABLE_MARKETS } from "@/data/mockData";
+import { useMarkets } from "@/hooks/useMarkets";
 import { cn } from "@/lib/utils";
 
 interface IndexFormProps {
@@ -30,6 +30,7 @@ const STEPS = [
 
 export function IndexForm({ initialData, isEditing = false, onSubmit }: IndexFormProps) {
   const navigate = useNavigate();
+  const { markets, isLoading: marketsLoading } = useMarkets();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -78,13 +79,22 @@ export function IndexForm({ initialData, isEditing = false, onSubmit }: IndexFor
 
     setIsSubmitting(true);
     try {
+      console.log('IndexForm submitting with selectedItems:', selectedItems);
       await onSubmit({ name, description, selectedMarkets, selectedItems });
-      navigate("/");
+      console.log('IndexForm onSubmit completed successfully');
+
+      // Success! Only navigate if creating (edit mode handles its own navigation)
+      if (!isEditing) {
+        navigate("/");
+      }
+      // Keep button disabled during edit mode navigation
     } catch (error) {
-      console.error("Failed to save index:", error);
-    } finally {
-      setIsSubmitting(false);
+      console.error("IndexForm: Failed to save index:", error);
+      setIsSubmitting(false); // Re-enable button on error
+      // Re-throw the error so parent component can handle it
+      throw error;
     }
+    // Note: Don't use finally here - let edit mode parent handle timing
   };
 
   const toggleMarket = (marketId: string) => {
@@ -205,11 +215,18 @@ export function IndexForm({ initialData, isEditing = false, onSubmit }: IndexFor
                 selected)
               </p>
             </div>
-            <MarketSelector
-              markets={AVAILABLE_MARKETS}
-              selectedMarkets={selectedMarkets}
-              onToggle={toggleMarket}
-            />
+            {marketsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="ml-2 text-muted-foreground">Loading markets...</span>
+              </div>
+            ) : (
+              <MarketSelector
+                markets={markets}
+                selectedMarkets={selectedMarkets}
+                onToggle={toggleMarket}
+              />
+            )}
             {errors.markets && (
               <p className="text-sm text-destructive">{errors.markets}</p>
             )}

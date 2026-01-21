@@ -40,8 +40,35 @@ export default function EditIndex() {
     selectedItems: any[];
   }) => {
     if (!id) return;
-    await updateIndex(parseInt(id), data);
-    toast.success("Index updated successfully!");
+
+    console.log('EditIndex handleSubmit called with:', data);
+
+    try {
+      const result = await updateIndex(parseInt(id), data);
+      console.log('Update result:', result);
+
+      // Success! Show toast and navigate
+      toast.success("Index updated successfully!");
+
+      // Use requestAnimationFrame to ensure toast is shown before navigation
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          navigate("/manage");
+        }, 300);
+      });
+    } catch (error) {
+      console.error("Failed to update index - error details:", error);
+
+      // Provide detailed error message
+      if (error instanceof Error) {
+        toast.error(`Failed to update index: ${error.message}`);
+      } else {
+        toast.error("Failed to update index. Please try again.");
+      }
+
+      // Re-throw to ensure form knows about the error
+      throw error;
+    }
   };
 
   if (isLoading) {
