@@ -1,11 +1,12 @@
 import { IndexForm } from "@/components/index-form/IndexForm";
-import { useIndices } from "@/hooks/useIndices";
+import { useCreateIndexMutation } from "@/hooks/queries";
 import { useDashboard } from "@/contexts/DashboardContext";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { Item } from "@/types";
 
 export default function CreateIndex() {
-  const { createIndex } = useIndices();
+  const createIndexMutation = useCreateIndexMutation();
   const { setEnabledIndices } = useDashboard();
   const navigate = useNavigate();
 
@@ -13,9 +14,9 @@ export default function CreateIndex() {
     name: string;
     description: string;
     selectedMarkets: string[];
-    selectedItems: any[];
+    selectedItems: Item[];
   }) => {
-    const newIndex = await createIndex(data);
+    const newIndex = await createIndexMutation.mutateAsync(data);
 
     // Enable the newly created index so it loads automatically
     if (newIndex?.id) {

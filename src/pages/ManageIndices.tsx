@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Loader2, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,25 +6,34 @@ import { IndexCard } from "@/components/dashboard/IndexCard";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { DeleteConfirmDialog } from "@/components/dashboard/DeleteConfirmDialog";
 import { ChartModal } from "@/components/chart/ChartModal";
-import { useIndices } from "@/hooks/useIndices";
+import {
+  useIndicesQuery,
+  useCalculatePriceMutation,
+  useDeleteIndexMutation,
+} from "@/hooks/queries";
 import { MarketIndex } from "@/types";
 
 export default function ManageIndices() {
   const navigate = useNavigate();
-  const { indices, isLoading, fetchIndices, calculatePrice, deleteIndex } = useIndices();
-  
+
+  // Indices data from TanStack Query (cached across navigation)
+  const { data: indices = [], isLoading } = useIndicesQuery();
+
+  // Mutations
+  const calculatePriceMutation = useCalculatePriceMutation();
+  const deleteIndexMutation = useDeleteIndexMutation();
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [indexToDelete, setIndexToDelete] = useState<MarketIndex | null>(null);
-  
-  const [chartModalOpen, setChartModalOpen] = useState(false);
-  const [chartIndex, setChartIndex] = useState<{ id: number; name: string } | null>(null);
 
-  useEffect(() => {
-    fetchIndices();
-  }, []);
+  const [chartModalOpen, setChartModalOpen] = useState(false);
+  const [chartIndex, setChartIndex] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const handleCalculate = async (id: number) => {
-    await calculatePrice(id);
+    await calculatePriceMutation.mutateAsync(id);
   };
 
   const handleViewChart = (id: number) => {
@@ -49,7 +58,7 @@ export default function ManageIndices() {
 
   const confirmDelete = async () => {
     if (indexToDelete) {
-      await deleteIndex(indexToDelete.id);
+      await deleteIndexMutation.mutateAsync(indexToDelete.id);
       setDeleteDialogOpen(false);
       setIndexToDelete(null);
     }

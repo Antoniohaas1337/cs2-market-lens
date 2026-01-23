@@ -7,12 +7,16 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { IndexOverviewCard } from "@/components/overview/IndexOverviewCard";
 import { ChartModal } from "@/components/chart/ChartModal";
 import { LargeIndexWarningDialog } from "@/components/dashboard/LargeIndexWarningDialog";
-import { LoadingProgress, IndexItemProgress } from "@/components/dashboard/LoadingProgress";
-import { useIndices } from "@/hooks/useIndices";
-import { useDashboard, type CachedData } from "@/contexts/DashboardContext";
-import * as api from "@/api/client";
+import { LoadingProgress } from "@/components/dashboard/LoadingProgress";
+import { useIndicesQuery } from "@/hooks/queries";
+import { useChartDataLoader } from "@/hooks/useChartData";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { MarketIndex, TimeRange, PricePoint } from "@/types";
-import { formatRelativeTime, filterPricePointsByDays, filterPricePointsByDateRange } from "@/lib/dateUtils";
+import {
+  formatRelativeTime,
+  filterPricePointsByDays,
+  filterPricePointsByDateRange,
+} from "@/lib/dateUtils";
 
 const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: "7", label: "7D" },
@@ -22,38 +26,57 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: "365", label: "1Y" },
 ];
 
-// Maximum days to load (we load all data once and filter client-side)
-const MAX_DAYS = 365;
-
 export default function Dashboard() {
-  const { indices, isLoading: indicesLoading } = useIndices();
+  // Indices data from TanStack Query (cached across navigation)
+  const { data: indices = [], isLoading: indicesLoading } = useIndicesQuery();
+
+  // Chart data loader with SSE progress and TanStack Query caching
   const {
-    cachedDataMap,
-    setCachedDataMap,
+    loadingIndices,
+    completedIndices,
+    itemProgress,
+    isReloading,
+    getAllCachedData,
+    loadSingleIndex,
+    loadMultipleIndices,
+    clearCache,
+    resetCompleted,
+  } = useChartDataLoader();
+
+  // UI state from context
+  const {
     enabledIndices,
     setEnabledIndices,
     shownLargeIndexWarning,
     setShownLargeIndexWarning,
-    clearCachedData,
   } = useDashboard();
 
+  // Local UI state
   const [timeRange, setTimeRange] = useState<TimeRange>("30");
-  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
-  const [isReloading, setIsReloading] = useState(false);
-  const [loadingIndices, setLoadingIndices] = useState<Set<number>>(new Set());
-  const [completedIndices, setCompletedIndices] = useState<Set<number>>(new Set());
-  const [chartModalIndex, setChartModalIndex] = useState<MarketIndex | null>(null);
+  const [customDateRange, setCustomDateRange] = useState<
+    DateRange | undefined
+  >(undefined);
+  const [chartModalIndex, setChartModalIndex] = useState<MarketIndex | null>(
+    null
+  );
   const [warningDialogOpen, setWarningDialogOpen] = useState(false);
-  const [pendingToggleIndex, setPendingToggleIndex] = useState<MarketIndex | null>(null);
+  const [pendingToggleIndex, setPendingToggleIndex] =
+    useState<MarketIndex | null>(null);
   const [previousEnabledCount, setPreviousEnabledCount] = useState(0);
-  const [itemProgress, setItemProgress] = useState<Record<number, IndexItemProgress>>({});
+
+  // Get cached data map from query cache
+  const cachedDataMap = getAllCachedData();
 
   // Filter cached data based on selected time range (client-side only)
   const chartDataMap = useMemo(() => {
     const filtered: Record<number, PricePoint[]> = {};
 
     Object.entries(cachedDataMap).forEach(([indexId, cached]) => {
-      if (timeRange === "custom" && customDateRange?.from && customDateRange?.to) {
+      if (
+        timeRange === "custom" &&
+        customDateRange?.from &&
+        customDateRange?.to
+      ) {
         filtered[Number(indexId)] = filterPricePointsByDateRange(
           cached.data,
           customDateRange.from,
@@ -70,203 +93,79 @@ export default function Dashboard() {
 
   // Get the oldest "loaded at" timestamp to show when data was last refreshed
   const lastUpdated = useMemo(() => {
-    const timestamps = Object.values(cachedDataMap).map((c) => c.loadedAt.getTime());
+    const timestamps = Object.values(cachedDataMap).map((c) =>
+      c.loadedAt.getTime()
+    );
     if (timestamps.length === 0) return null;
     return new Date(Math.min(...timestamps));
   }, [cachedDataMap]);
 
-  // Load chart data with progress updates via SSE stream
-  const loadChartDataWithProgress = (
-    indexId: number
-  ): Promise<PricePoint[] | null> => {
-    return new Promise((resolve) => {
-      const cleanup = api.getRobustSalesHistoryStream(
-        indexId,
-        MAX_DAYS,
-        {
-          onProgress: (completed, total) => {
-            setItemProgress((prev) => ({
-              ...prev,
-              [indexId]: { completed, total },
-            }));
-          },
-          onComplete: (response) => {
-            // Clear item progress for this index
-            setItemProgress((prev) => {
-              const next = { ...prev };
-              delete next[indexId];
-              return next;
-            });
-            resolve(
-              response.data_points.map((point) => ({
-                timestamp: point.timestamp,
-                value: point.value,
-              }))
-            );
-          },
-          onError: (message) => {
-            console.error(`Failed to load chart data for index ${indexId}:`, message);
-            // Clear item progress for this index
-            setItemProgress((prev) => {
-              const next = { ...prev };
-              delete next[indexId];
-              return next;
-            });
-            resolve(null);
-          },
-        }
-      );
-
-      // Store cleanup function if needed (not used currently but available for future)
-      return cleanup;
-    });
-  };
-
-  // Load/refresh a single index with progress tracking
-  const loadSingleIndex = useCallback(async (indexId: number) => {
-    console.log(`[Dashboard] Loading single index ${indexId}`);
-
-    // Mark as loading
-    setLoadingIndices((prev) => new Set(prev).add(indexId));
-
-    try {
-      const data = await loadChartDataWithProgress(indexId);
-      const loadedAt = new Date();
-
-      if (data && data.length > 0) {
-        console.log(`[Dashboard] Data loaded for index ${indexId}: ${data.length} points`);
-        setCachedDataMap((prev) => ({
-          ...prev,
-          [indexId]: { data, loadedAt },
-        }));
-      }
-
-      // Mark as completed
-      setCompletedIndices((prev) => new Set(prev).add(indexId));
-    } catch (error) {
-      console.error(`[Dashboard] Error loading index ${indexId}:`, error);
-    } finally {
-      // Remove from loading set
-      setLoadingIndices((prev) => {
-        const next = new Set(prev);
-        next.delete(indexId);
-        return next;
-      });
-    }
-  }, [setCachedDataMap]);
-
+  // Reload all enabled indices
   const reloadAllData = useCallback(async () => {
-    console.log("[Dashboard] reloadAllData called");
-    console.log("[Dashboard] indices:", indices);
-    console.log("[Dashboard] enabledIndices:", enabledIndices);
-
-    if (indices.length === 0) {
-      console.log("[Dashboard] No indices available");
-      return;
-    }
+    if (indices.length === 0) return;
 
     // Only load enabled indices
-    const indicesToLoad = indices.filter((i) => enabledIndices.has(i.id));
-    console.log("[Dashboard] indicesToLoad:", indicesToLoad);
+    const indicesToLoad = indices
+      .filter((i) => enabledIndices.has(i.id))
+      .map((i) => i.id);
 
-    if (indicesToLoad.length === 0) {
-      console.log("[Dashboard] No enabled indices to load");
-      return;
-    }
+    if (indicesToLoad.length === 0) return;
 
-    console.log("[Dashboard] Starting reload...");
-    setIsReloading(true);
-    setLoadingIndices(new Set(indicesToLoad.map((i) => i.id)));
-    setCompletedIndices(new Set());
-
-    const newCachedData: Record<number, CachedData> = {};
-    const loadedAt = new Date();
-
-    // Load full data (365 days) for enabled indices in parallel using robust sales history with progress
-    try {
-      await Promise.all(
-        indicesToLoad.map(async (index) => {
-          console.log(`[Dashboard] Loading data for index ${index.id}: ${index.name}`);
-          const data = await loadChartDataWithProgress(index.id);
-
-          if (data && data.length > 0) {
-            console.log(`[Dashboard] Data loaded for index ${index.id}: ${data.length} points`);
-            newCachedData[index.id] = {
-              data,
-              loadedAt,
-            };
-          } else {
-            console.log(`[Dashboard] No data for index ${index.id}`);
-          }
-
-          // Mark as completed and remove from loading set
-          setCompletedIndices((prev) => new Set(prev).add(index.id));
-          setLoadingIndices((prev) => {
-            const next = new Set(prev);
-            next.delete(index.id);
-            return next;
-          });
-        })
-      );
-
-      console.log("[Dashboard] All data loaded, updating cache:", newCachedData);
-      setCachedDataMap(newCachedData);
-      setLoadingIndices(new Set());
-      setIsReloading(false);
-      console.log("[Dashboard] Reload complete");
-    } catch (error) {
-      console.error("[Dashboard] Error during reload:", error);
-      setIsReloading(false);
-      setLoadingIndices(new Set());
-    }
-  }, [indices, enabledIndices]);
+    resetCompleted();
+    await loadMultipleIndices(indicesToLoad);
+  }, [indices, enabledIndices, loadMultipleIndices, resetCompleted]);
 
   // Time range change now only filters client-side (no API calls)
   const handleTimeRangeChange = useCallback((newRange: TimeRange) => {
     setTimeRange(newRange);
-    // Data is automatically filtered via useMemo above
   }, []);
 
   // Toggle handler for enabling/disabling indices
-  const handleToggleIndex = useCallback((indexId: number, enabled: boolean) => {
-    const index = indices.find((i) => i.id === indexId);
+  const handleToggleIndex = useCallback(
+    (indexId: number, enabled: boolean) => {
+      const index = indices.find((i) => i.id === indexId);
 
-    if (enabled && index && index.item_count > 100) {
-      // Check if user has disabled warnings
-      const hideWarning = localStorage.getItem("hideLargeIndexWarning") === "true";
+      if (enabled && index && index.item_count > 100) {
+        // Check if user has disabled warnings
+        const hideWarning =
+          localStorage.getItem("hideLargeIndexWarning") === "true";
 
-      if (!hideWarning) {
-        // Show warning dialog
-        setPendingToggleIndex(index);
-        setWarningDialogOpen(true);
-        return; // Don't enable yet, wait for confirmation
+        if (!hideWarning) {
+          // Show warning dialog
+          setPendingToggleIndex(index);
+          setWarningDialogOpen(true);
+          return; // Don't enable yet, wait for confirmation
+        }
       }
-    }
 
-    // Enable or disable the index
-    setEnabledIndices((prev) => {
-      const next = new Set(prev);
-      if (enabled) {
-        next.add(indexId);
-      } else {
-        next.delete(indexId);
-        // Also clear cached data for disabled index
-        clearCachedData(indexId);
+      // Enable or disable the index
+      setEnabledIndices((prev) => {
+        const next = new Set(prev);
+        if (enabled) {
+          next.add(indexId);
+        } else {
+          next.delete(indexId);
+          // Also clear cached data for disabled index
+          clearCache(indexId);
+        }
+        return next;
+      });
+
+      // Mark warning as shown for small visual indicator
+      if (enabled && index && index.item_count > 100) {
+        setShownLargeIndexWarning((prev) => new Set(prev).add(indexId));
       }
-      return next;
-    });
-
-    // Mark warning as shown for small visual indicator
-    if (enabled && index && index.item_count > 100) {
-      setShownLargeIndexWarning((prev) => new Set(prev).add(indexId));
-    }
-  }, [indices, setEnabledIndices, clearCachedData, setShownLargeIndexWarning]);
+    },
+    [indices, setEnabledIndices, clearCache, setShownLargeIndexWarning]
+  );
 
   // Confirm enabling large index from warning dialog
   const handleConfirmLargeIndex = useCallback(() => {
     if (pendingToggleIndex) {
       setEnabledIndices((prev) => new Set(prev).add(pendingToggleIndex.id));
-      setShownLargeIndexWarning((prev) => new Set(prev).add(pendingToggleIndex.id));
+      setShownLargeIndexWarning((prev) =>
+        new Set(prev).add(pendingToggleIndex.id)
+      );
       setPendingToggleIndex(null);
     }
   }, [pendingToggleIndex, setEnabledIndices, setShownLargeIndexWarning]);
@@ -283,12 +182,24 @@ export default function Dashboard() {
   useEffect(() => {
     // Check if new indices were enabled (count increased)
     if (enabledCount > previousEnabledCount && previousEnabledCount > 0) {
-      console.log("[Dashboard] New indices enabled, auto-loading...");
-      // Trigger reload for newly enabled indices
-      reloadAllData();
+      // Find newly enabled indices that don't have cached data
+      const newlyEnabled = indices.filter(
+        (i) => enabledIndices.has(i.id) && !cachedDataMap[i.id]
+      );
+
+      if (newlyEnabled.length > 0) {
+        loadMultipleIndices(newlyEnabled.map((i) => i.id));
+      }
     }
     setPreviousEnabledCount(enabledCount);
-  }, [enabledCount, previousEnabledCount, reloadAllData]);
+  }, [
+    enabledCount,
+    previousEnabledCount,
+    indices,
+    enabledIndices,
+    cachedDataMap,
+    loadMultipleIndices,
+  ]);
 
   // Sort indices: enabled first, then disabled
   const sortedIndices = useMemo(() => {
@@ -336,12 +247,15 @@ export default function Dashboard() {
 
         <div className="flex items-center gap-3 flex-wrap">
           {/* Time Range Selector */}
-          <Tabs value={timeRange} onValueChange={(v) => {
-            handleTimeRangeChange(v as TimeRange);
-            if (v !== "custom") {
-              setCustomDateRange(undefined);
-            }
-          }}>
+          <Tabs
+            value={timeRange}
+            onValueChange={(v) => {
+              handleTimeRangeChange(v as TimeRange);
+              if (v !== "custom") {
+                setCustomDateRange(undefined);
+              }
+            }}
+          >
             <TabsList className="bg-muted/50">
               {TIME_RANGES.map((range) => (
                 <TabsTrigger
@@ -379,7 +293,9 @@ export default function Dashboard() {
             variant="glow"
             className="gap-2"
           >
-            <RefreshCw className={`h-4 w-4 ${isReloading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-4 w-4 ${isReloading ? "animate-spin" : ""}`}
+            />
             {isReloading
               ? "Loading..."
               : hasData
@@ -394,7 +310,9 @@ export default function Dashboard() {
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-card to-card/50 border border-border/50 p-4">
           <div className="absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="relative">
-            <div className="text-3xl font-bold text-foreground">{indices.length}</div>
+            <div className="text-3xl font-bold text-foreground">
+              {indices.length}
+            </div>
             <div className="text-sm text-muted-foreground mt-1">Indices</div>
           </div>
         </div>
@@ -403,11 +321,13 @@ export default function Dashboard() {
           <div className="absolute top-0 right-0 w-16 h-16 bg-success/10 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="relative">
             <div className="text-3xl font-bold text-success">
-              {hasData ? indices.filter((i) => {
-                const data = chartDataMap[i.id];
-                if (!data || data.length < 2) return false;
-                return data[data.length - 1].value > data[0].value;
-              }).length : "—"}
+              {hasData
+                ? indices.filter((i) => {
+                    const data = chartDataMap[i.id];
+                    if (!data || data.length < 2) return false;
+                    return data[data.length - 1].value > data[0].value;
+                  }).length
+                : "—"}
             </div>
             <div className="text-sm text-success/70 mt-1">Rising</div>
           </div>
@@ -417,11 +337,13 @@ export default function Dashboard() {
           <div className="absolute top-0 right-0 w-16 h-16 bg-destructive/10 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="relative">
             <div className="text-3xl font-bold text-destructive">
-              {hasData ? indices.filter((i) => {
-                const data = chartDataMap[i.id];
-                if (!data || data.length < 2) return false;
-                return data[data.length - 1].value < data[0].value;
-              }).length : "—"}
+              {hasData
+                ? indices.filter((i) => {
+                    const data = chartDataMap[i.id];
+                    if (!data || data.length < 2) return false;
+                    return data[data.length - 1].value < data[0].value;
+                  }).length
+                : "—"}
             </div>
             <div className="text-sm text-destructive/70 mt-1">Falling</div>
           </div>
@@ -431,12 +353,16 @@ export default function Dashboard() {
           <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="relative">
             <div className="text-3xl font-bold font-mono text-primary">
-              {hasData ? `$${Object.values(chartDataMap).reduce((sum, data) => {
-                if (data && data.length > 0) {
-                  return sum + data[data.length - 1].value;
-                }
-                return sum;
-              }, 0).toLocaleString()}` : "—"}
+              {hasData
+                ? `$${Object.values(chartDataMap)
+                    .reduce((sum, data) => {
+                      if (data && data.length > 0) {
+                        return sum + data[data.length - 1].value;
+                      }
+                      return sum;
+                    }, 0)
+                    .toLocaleString()}`
+                : "—"}
             </div>
             <div className="text-sm text-primary/70 mt-1">Total Value</div>
           </div>
@@ -449,7 +375,9 @@ export default function Dashboard() {
           {enabledCount === 0 ? (
             <>
               <p className="text-muted-foreground">
-                Enable indices with the <span className="text-primary font-medium">toggle switches</span> to load them.
+                Enable indices with the{" "}
+                <span className="text-primary font-medium">toggle switches</span>{" "}
+                to load them.
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Only enabled indices will be loaded and consume API quota.
@@ -458,7 +386,11 @@ export default function Dashboard() {
           ) : (
             <>
               <p className="text-muted-foreground">
-                Click <span className="text-primary font-medium">"Load enabled ({enabledCount})"</span> to load price data.
+                Click{" "}
+                <span className="text-primary font-medium">
+                  "Load enabled ({enabledCount})"
+                </span>{" "}
+                to load price data.
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Data will be loaded for 1 year and cached locally.

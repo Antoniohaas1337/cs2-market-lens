@@ -1,58 +1,57 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { IndexForm } from "@/components/index-form/IndexForm";
-import { useIndices } from "@/hooks/useIndices";
+import { useIndexQuery, useUpdateIndexMutation } from "@/hooks/queries";
 import { useDashboard } from "@/contexts/DashboardContext";
-import { MarketIndex } from "@/types";
+import { Item } from "@/types";
 import { toast } from "sonner";
 
 export default function EditIndex() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getIndex, updateIndex } = useIndices();
+  const indexId = id ? parseInt(id) : undefined;
+
+  // Fetch index data using TanStack Query (cached across navigation)
+  const {
+    data: index,
+    isLoading,
+    error,
+  } = useIndexQuery(indexId);
+
+  const updateIndexMutation = useUpdateIndexMutation();
   const { setEnabledIndices } = useDashboard();
-  const [index, setIndex] = useState<MarketIndex | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
+  // Handle navigation when no id
   useEffect(() => {
-    const loadIndex = async () => {
-      if (!id) {
-        navigate("/");
-        return;
-      }
+    if (!id) {
+      navigate("/");
+    }
+  }, [id, navigate]);
 
-      const data = await getIndex(parseInt(id));
-      if (data) {
-        setIndex(data);
-      } else {
-        toast.error("Index not found");
-        navigate("/");
-      }
-      setIsLoading(false);
-    };
-
-    loadIndex();
-  }, [id]);
+  // Handle error state
+  useEffect(() => {
+    if (error) {
+      toast.error("Index not found");
+      navigate("/");
+    }
+  }, [error, navigate]);
 
   const handleSubmit = async (data: {
     name: string;
     description: string;
     selectedMarkets: string[];
-    selectedItems: any[];
+    selectedItems: Item[];
   }) => {
-    if (!id) return;
-
-    console.log('EditIndex handleSubmit called with:', data);
+    if (!indexId) return;
 
     try {
-      const result = await updateIndex(parseInt(id), data);
-      console.log('Update result:', result);
+      await updateIndexMutation.mutateAsync({ id: indexId, data });
 
       // Enable the updated index so it loads automatically
       setEnabledIndices((prev) => {
         const next = new Set(prev);
-        next.add(parseInt(id));
+        next.add(indexId);
         return next;
       });
 
@@ -66,7 +65,7 @@ export default function EditIndex() {
         }, 300);
       });
     } catch (error) {
-      console.error("Failed to update index - error details:", error);
+      console.error("Failed to update index:", error);
 
       // Provide detailed error message
       if (error instanceof Error) {

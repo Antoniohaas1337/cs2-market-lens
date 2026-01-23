@@ -2,11 +2,9 @@ import { CheckCircle2, Loader2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarketIndex } from "@/types";
 import { Progress } from "@/components/ui/progress";
+import type { IndexItemProgress } from "@/hooks/useChartData";
 
-export interface IndexItemProgress {
-  completed: number;
-  total: number;
-}
+export type { IndexItemProgress };
 
 interface LoadingProgressProps {
   indices: MarketIndex[];

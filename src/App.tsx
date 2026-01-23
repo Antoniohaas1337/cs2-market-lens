@@ -11,7 +11,20 @@ import CreateIndex from "./pages/CreateIndex";
 import EditIndex from "./pages/EditIndex";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Data stays fresh for 5 minutes - no refetch during this time
+      staleTime: 5 * 60 * 1000,
+      // Keep unused data in cache for 30 minutes
+      gcTime: 30 * 60 * 1000,
+      // Don't refetch on window focus for better UX
+      refetchOnWindowFocus: false,
+      // Retry failed requests once
+      retry: 1,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
