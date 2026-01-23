@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { IndexForm } from "@/components/index-form/IndexForm";
 import { useIndices } from "@/hooks/useIndices";
+import { useDashboard } from "@/contexts/DashboardContext";
 import { MarketIndex } from "@/types";
 import { toast } from "sonner";
 
@@ -10,6 +11,7 @@ export default function EditIndex() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getIndex, updateIndex } = useIndices();
+  const { setEnabledIndices } = useDashboard();
   const [index, setIndex] = useState<MarketIndex | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -47,13 +49,20 @@ export default function EditIndex() {
       const result = await updateIndex(parseInt(id), data);
       console.log('Update result:', result);
 
+      // Enable the updated index so it loads automatically
+      setEnabledIndices((prev) => {
+        const next = new Set(prev);
+        next.add(parseInt(id));
+        return next;
+      });
+
       // Success! Show toast and navigate
       toast.success("Index updated successfully!");
 
       // Use requestAnimationFrame to ensure toast is shown before navigation
       requestAnimationFrame(() => {
         setTimeout(() => {
-          navigate("/manage");
+          navigate("/");
         }, 300);
       });
     } catch (error) {

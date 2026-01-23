@@ -91,6 +91,45 @@ export interface ItemSearchResponse {
   count: number;
 }
 
+export interface ItemFilterRequest {
+  types?: string[];
+  weapons?: string[];
+  exteriors?: string[];
+  qualities?: string[];
+  collections?: string[];
+  search?: string;
+}
+
+export interface ItemFilterResponse {
+  items: ItemResponse[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  filters_applied: {
+    types: string[];
+    weapons: string[];
+    exteriors: string[];
+    qualities: string[];
+    collections: string[];
+    search: string | null;
+  };
+}
+
+export interface AggregationValue {
+  value: string;
+  count: number;
+}
+
+export interface ItemAggregationsResponse {
+  types: AggregationValue[];
+  weapons: AggregationValue[];
+  exteriors: AggregationValue[];
+  qualities: AggregationValue[];
+  collections: AggregationValue[];
+  total_items: number;
+}
+
 export interface MarketResponse {
   id: string;
   name: string;
@@ -154,7 +193,6 @@ export interface RobustSalesHistoryResponse {
     value: number;
     items_with_data: number;
     items_carried_forward: number;
-    items_skipped: number;
   }>;
   config: {
     outlier_threshold: number;
@@ -237,6 +275,58 @@ export async function getItem(id: number): Promise<ItemResponse> {
   return fetchApi<ItemResponse>(`/api/items/${id}`);
 }
 
+/**
+ * Filter items with multiple criteria using AND/OR logic.
+ * - Different filter categories are combined with AND
+ * - Multiple values within a category are combined with OR
+ */
+export async function filterItems(
+  filters: ItemFilterRequest,
+  page: number = 1,
+  limit: number = 100
+): Promise<ItemFilterResponse> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  });
+
+  return fetchApi<ItemFilterResponse>(`/api/items/filter?${params}`, {
+    method: 'POST',
+    body: JSON.stringify(filters),
+  });
+}
+
+/**
+ * Get aggregated counts for all filter values.
+ * Pass current filter selections to get updated counts for other facets.
+ */
+export async function getItemAggregations(
+  filters?: Partial<ItemFilterRequest>
+): Promise<ItemAggregationsResponse> {
+  const params = new URLSearchParams();
+
+  if (filters?.types?.length) {
+    filters.types.forEach((t) => params.append('types', t));
+  }
+  if (filters?.weapons?.length) {
+    filters.weapons.forEach((w) => params.append('weapons', w));
+  }
+  if (filters?.exteriors?.length) {
+    filters.exteriors.forEach((e) => params.append('exteriors', e));
+  }
+  if (filters?.qualities?.length) {
+    filters.qualities.forEach((q) => params.append('qualities', q));
+  }
+  if (filters?.collections?.length) {
+    filters.collections.forEach((c) => params.append('collections', c));
+  }
+
+  const queryString = params.toString();
+  return fetchApi<ItemAggregationsResponse>(
+    `/api/items/aggregations${queryString ? `?${queryString}` : ''}`
+  );
+}
+
 // --- Markets ---
 
 export async function getMarkets(): Promise<MarketsListResponse> {
@@ -270,7 +360,8 @@ export async function getSalesHistory(
   indexId: number,
   days: number = 30
 ): Promise<SalesHistoryResponse> {
-  return fetchApi<SalesHistoryResponse>(`/api/prices/${indexId}/sales-history?days=${days}`);
+  // Use listings-history endpoint to get live market data for current items
+  return fetchApi<SalesHistoryResponse>(`/api/prices/${indexId}/listings-history?days=${days}`);
 }
 
 // Legacy alias for backwards compatibility
@@ -369,4 +460,89 @@ export async function getRobustSalesHistory(
   return fetchApi<RobustSalesHistoryResponse>(
     `/api/prices/${indexId}/robust-sales-history?${params}`
   );
+}
+
+export interface RobustSalesHistoryStreamProgress {
+  type: 'progress';
+  completed: number;
+  total: number;
+}
+
+export interface RobustSalesHistoryStreamComplete {
+  type: 'complete';
+  data: RobustSalesHistoryResponse;
+}
+
+export interface RobustSalesHistoryStreamError {
+  type: 'error';
+  message: string;
+}
+
+export type RobustSalesHistoryStreamEvent =
+  | RobustSalesHistoryStreamProgress
+  | RobustSalesHistoryStreamComplete
+  | RobustSalesHistoryStreamError;
+
+export interface RobustSalesHistoryStreamCallbacks {
+  onProgress?: (completed: number, total: number) => void;
+  onComplete?: (data: RobustSalesHistoryResponse) => void;
+  onError?: (message: string) => void;
+}
+
+/**
+ * Fetch robust sales history with real-time item-by-item progress updates via SSE.
+ *
+ * Returns a cleanup function to abort the stream.
+ */
+export function getRobustSalesHistoryStream(
+  indexId: number,
+  days: number = 30,
+  callbacks: RobustSalesHistoryStreamCallbacks,
+  options?: {
+    outlierThreshold?: number;
+    staleDays?: number;
+  }
+): () => void {
+  const params = new URLSearchParams({ days: days.toString() });
+  if (options?.outlierThreshold !== undefined) {
+    params.append('outlier_threshold', options.outlierThreshold.toString());
+  }
+  if (options?.staleDays !== undefined) {
+    params.append('stale_days', options.staleDays.toString());
+  }
+
+  const url = `${API_BASE_URL}/api/prices/${indexId}/robust-sales-history-stream?${params}`;
+  const eventSource = new EventSource(url);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data) as RobustSalesHistoryStreamEvent;
+
+      switch (data.type) {
+        case 'progress':
+          callbacks.onProgress?.(data.completed, data.total);
+          break;
+        case 'complete':
+          callbacks.onComplete?.(data.data);
+          eventSource.close();
+          break;
+        case 'error':
+          callbacks.onError?.(data.message);
+          eventSource.close();
+          break;
+      }
+    } catch (err) {
+      console.error('Failed to parse SSE event:', err);
+    }
+  };
+
+  eventSource.onerror = () => {
+    callbacks.onError?.('Connection failed');
+    eventSource.close();
+  };
+
+  // Return cleanup function
+  return () => {
+    eventSource.close();
+  };
 }

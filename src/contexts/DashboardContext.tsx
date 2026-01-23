@@ -1,18 +1,20 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { PricePoint } from "@/types";
 
-interface CachedData {
+export interface CachedData {
   data: PricePoint[];
   loadedAt: Date;
 }
 
+type SetStateAction<S> = S | ((prevState: S) => S);
+
 interface DashboardContextType {
   cachedDataMap: Record<number, CachedData>;
-  setCachedDataMap: (data: Record<number, CachedData>) => void;
+  setCachedDataMap: (data: SetStateAction<Record<number, CachedData>>) => void;
   enabledIndices: Set<number>;
-  setEnabledIndices: (indices: Set<number>) => void;
+  setEnabledIndices: (indices: SetStateAction<Set<number>>) => void;
   shownLargeIndexWarning: Set<number>;
-  setShownLargeIndexWarning: (warnings: Set<number>) => void;
+  setShownLargeIndexWarning: (warnings: SetStateAction<Set<number>>) => void;
   clearCachedData: (indexId: number) => void;
 }
 

@@ -48,4 +48,9 @@ export interface Market {
   displayName: string;
 }
 
-export type TimeRange = "7" | "30" | "90" | "180" | "365";
+export type TimeRange = "7" | "30" | "90" | "180" | "365" | "custom";
+
+export interface DateRange {
+  from: Date;
+  to: Date;
+}

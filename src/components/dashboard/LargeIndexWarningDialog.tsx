@@ -52,16 +52,16 @@ export function LargeIndexWarningDialog({
             <div className="p-2 rounded-full bg-warning/10">
               <AlertTriangle className="h-6 w-6 text-warning" />
             </div>
-            <AlertDialogTitle className="text-xl">Achtung: Hoher Datenverbrauch</AlertDialogTitle>
+            <AlertDialogTitle className="text-xl">Warning: High Data Usage</AlertDialogTitle>
           </div>
           <AlertDialogDescription className="text-base space-y-3 pt-2">
             <p>
-              Der Index <span className="font-semibold text-foreground">{indexName}</span> enthält{" "}
-              <span className="font-semibold text-foreground">{itemCount} Items</span>.
+              The index <span className="font-semibold text-foreground">{indexName}</span> contains{" "}
+              <span className="font-semibold text-foreground">{itemCount} items</span>.
             </p>
             <p>
-              Dieser Index ist sehr datenintensiv und verbraucht viele API-Anfragen beim Laden.
-              Das kann Ihre verfügbare Quote deutlich reduzieren.
+              This index is very data-intensive and requires many API requests when loading.
+              This can significantly reduce your available quota.
             </p>
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -76,14 +76,14 @@ export function LargeIndexWarningDialog({
             htmlFor="dont-show"
             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
           >
-            Diese Warnung nicht mehr anzeigen
+            Don't show this warning again
           </label>
         </div>
 
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>Abbrechen</AlertDialogCancel>
+          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={handleConfirm} className="bg-warning hover:bg-warning/90">
-            Trotzdem aktivieren
+            Enable anyway
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

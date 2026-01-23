@@ -73,16 +73,16 @@ export default function ManageIndices() {
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Settings className="h-7 w-7 text-primary" />
-            Indizes verwalten
+            Manage Indices
           </h1>
           <p className="text-muted-foreground">
-            Erstelle, bearbeite und lösche deine Markt-Indizes
+            Create, edit and delete your market indices
           </p>
         </div>
         {indices.length > 0 && (
           <Button variant="glow" onClick={() => navigate("/create")}>
             <Plus className="h-4 w-4" />
-            Neuer Index
+            New Index
           </Button>
         )}
       </div>

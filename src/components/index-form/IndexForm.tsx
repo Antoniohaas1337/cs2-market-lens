@@ -1,15 +1,19 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Search, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MarketSelector } from "./MarketSelector";
 import { ItemSearch } from "./ItemSearch";
+import { RuleBasedItemSelector } from "./RuleBasedItemSelector";
 import { Item, MarketIndex } from "@/types";
 import { useMarkets } from "@/hooks/useMarkets";
 import { cn } from "@/lib/utils";
+
+type SelectionMode = "search" | "rules";
 
 interface IndexFormProps {
   initialData?: MarketIndex;
@@ -33,6 +37,7 @@ export function IndexForm({ initialData, isEditing = false, onSubmit }: IndexFor
   const { markets, isLoading: marketsLoading } = useMarkets();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>("search");
 
   // Form state
   const [name, setName] = useState(initialData?.name || "");
@@ -239,14 +244,48 @@ export function IndexForm({ initialData, isEditing = false, onSubmit }: IndexFor
             <div className="space-y-2">
               <Label>Add Items *</Label>
               <p className="text-sm text-muted-foreground">
-                Search and add CS2 items to your index
+                {selectionMode === "search"
+                  ? "Search and add CS2 items individually"
+                  : "Select items by type, weapon, condition and more"}
               </p>
             </div>
-            <ItemSearch
-              selectedItems={selectedItems}
-              onAddItem={addItem}
-              onRemoveItem={removeItem}
-            />
+
+            {/* Mode Toggle */}
+            <Tabs value={selectionMode} onValueChange={(v) => setSelectionMode(v as SelectionMode)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="search" className="gap-2">
+                  <Search className="h-4 w-4" />
+                  Search
+                </TabsTrigger>
+                <TabsTrigger value="rules" className="gap-2">
+                  <Filter className="h-4 w-4" />
+                  Rule-Based
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {/* Search Mode */}
+            {selectionMode === "search" && (
+              <ItemSearch
+                selectedItems={selectedItems}
+                onAddItem={addItem}
+                onRemoveItem={removeItem}
+              />
+            )}
+
+            {/* Rule-Based Mode */}
+            {selectionMode === "rules" && (
+              <RuleBasedItemSelector
+                selectedItems={selectedItems}
+                onItemsChange={(items) => {
+                  setSelectedItems(items);
+                  if (items.length > 0) {
+                    setErrors(prev => ({ ...prev, items: "" }));
+                  }
+                }}
+              />
+            )}
+
             {errors.items && (
               <p className="text-sm text-destructive">{errors.items}</p>
             )}

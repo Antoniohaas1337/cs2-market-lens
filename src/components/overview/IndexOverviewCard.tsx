@@ -1,11 +1,18 @@
-import { TrendingUp, TrendingDown, Minus, AlertTriangle } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { MiniChart } from "./MiniChart";
 import { MarketIndex, PricePoint } from "@/types";
 import { cn } from "@/lib/utils";
+
+export interface ItemProgress {
+  completed: number;
+  total: number;
+}
 
 interface IndexOverviewCardProps {
   index: MarketIndex;
@@ -14,7 +21,9 @@ interface IndexOverviewCardProps {
   onClick: () => void;
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
+  onRefresh?: () => void;
   showLargeIndexWarning?: boolean;
+  itemProgress?: ItemProgress;
 }
 
 export function IndexOverviewCard({
@@ -24,7 +33,9 @@ export function IndexOverviewCard({
   onClick,
   enabled,
   onToggle,
-  showLargeIndexWarning = false
+  onRefresh,
+  showLargeIndexWarning = false,
+  itemProgress,
 }: IndexOverviewCardProps) {
   const priceChange = chartData && chartData.length >= 2
     ? chartData[chartData.length - 1].value - chartData[0].value
@@ -65,6 +76,21 @@ export function IndexOverviewCard({
                   !enabled && "ring-2 ring-primary/40 ring-offset-1 ring-offset-background"
                 )}
               />
+              {enabled && onRefresh && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRefresh();
+                  }}
+                  disabled={isLoading}
+                  title="Refresh index"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+                </Button>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
@@ -82,7 +108,19 @@ export function IndexOverviewCard({
           {/* Mini Chart */}
           <div className="flex-shrink-0">
             {isLoading ? (
-              <Skeleton className="h-12 w-24" />
+              itemProgress ? (
+                <div className="h-12 w-24 flex flex-col items-center justify-center gap-1">
+                  <span className="text-xs text-primary font-medium">
+                    {itemProgress.completed}/{itemProgress.total}
+                  </span>
+                  <Progress
+                    value={(itemProgress.completed / itemProgress.total) * 100}
+                    className="h-1.5 w-20"
+                  />
+                </div>
+              ) : (
+                <Skeleton className="h-12 w-24" />
+              )
             ) : chartData && chartData.length > 0 ? (
               <MiniChart data={chartData} isPositive={isPositive} />
             ) : (

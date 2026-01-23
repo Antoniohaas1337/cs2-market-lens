@@ -1,6 +1,12 @@
 import { CheckCircle2, Loader2, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarketIndex } from "@/types";
+import { Progress } from "@/components/ui/progress";
+
+export interface IndexItemProgress {
+  completed: number;
+  total: number;
+}
 
 interface LoadingProgressProps {
   indices: MarketIndex[];
@@ -8,6 +14,7 @@ interface LoadingProgressProps {
   completedIndices: Set<number>;
   completedCount: number;
   totalCount: number;
+  itemProgress?: Record<number, IndexItemProgress>;
 }
 
 export function LoadingProgress({
@@ -16,6 +23,7 @@ export function LoadingProgress({
   completedIndices,
   completedCount,
   totalCount,
+  itemProgress = {},
 }: LoadingProgressProps) {
   const percentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
@@ -26,17 +34,17 @@ export function LoadingProgress({
         <div>
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            Lade robuste Sales-Historie
+            Loading Robust Sales History
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            {completedCount} / {totalCount} Indizes fertig
+            {completedCount} / {totalCount} indices complete
           </p>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-primary">
             {percentage.toFixed(0)}%
           </div>
-          <div className="text-xs text-muted-foreground">Fortschritt</div>
+          <div className="text-xs text-muted-foreground">Progress</div>
         </div>
       </div>
 
@@ -80,18 +88,30 @@ export function LoadingProgress({
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm truncate">{index.name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {index.item_count} Items • {index.selected_markets.length} Märkte
+                  {index.item_count} Items • {index.selected_markets.length} Markets
                 </div>
               </div>
 
-              {/* Status Text */}
-              <div className="flex-shrink-0 text-xs font-medium">
+              {/* Status Text / Progress */}
+              <div className="flex-shrink-0 text-xs font-medium min-w-[80px] text-right">
                 {isCompleted ? (
-                  <span className="text-success">Fertig</span>
+                  <span className="text-success">Done</span>
                 ) : isLoading ? (
-                  <span className="text-primary">Lädt...</span>
+                  itemProgress[index.id] ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-primary">
+                        {itemProgress[index.id].completed}/{itemProgress[index.id].total} Items
+                      </span>
+                      <Progress
+                        value={(itemProgress[index.id].completed / itemProgress[index.id].total) * 100}
+                        className="h-1.5 w-20"
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-primary">Loading...</span>
+                  )
                 ) : (
-                  <span className="text-muted-foreground">Wartet</span>
+                  <span className="text-muted-foreground">Waiting</span>
                 )}
               </div>
             </div>
@@ -101,7 +121,7 @@ export function LoadingProgress({
 
       {/* Footer Info */}
       <div className="text-xs text-muted-foreground text-center pt-2 border-t border-border/50">
-        Verwendet Carry-Forward, Outlier-Removal und Volume-Weighting
+        Uses carry-forward, outlier removal and volume weighting
       </div>
     </div>
   );

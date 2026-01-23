@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { Loader2, Clock, RefreshCw } from "lucide-react";
+import { DateRange } from "react-day-picker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { PriceChart } from "./PriceChart";
 import { ChartData, TimeRange } from "@/types";
 import * as api from "@/api/client";
-import { formatRelativeTime, filterPricePointsByDays } from "@/lib/dateUtils";
+import { formatRelativeTime, filterPricePointsByDays, filterPricePointsByDateRange } from "@/lib/dateUtils";
 import { cn } from "@/lib/utils";
 
 interface ChartModalProps {
@@ -34,6 +36,7 @@ interface CachedChartData {
 
 export function ChartModal({ open, onOpenChange, indexId, indexName, cachedData: propsData }: ChartModalProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>("30");
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
   const [loadedData, setLoadedData] = useState<CachedChartData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,15 +62,30 @@ export function ChartModal({ open, onOpenChange, indexId, indexName, cachedData:
   const chartData = useMemo(() => {
     if (!fullData) return null;
 
-    const days = parseInt(timeRange);
-    const filteredPoints = filterPricePointsByDays(fullData.data_points, days);
+    let filteredPoints;
+    let days;
+
+    if (timeRange === "custom" && customDateRange?.from && customDateRange?.to) {
+      filteredPoints = filterPricePointsByDateRange(
+        fullData.data_points,
+        customDateRange.from,
+        customDateRange.to
+      );
+      // Calculate days for display
+      days = Math.ceil(
+        (customDateRange.to.getTime() - customDateRange.from.getTime()) / (1000 * 60 * 60 * 24)
+      );
+    } else {
+      days = parseInt(timeRange) || 30;
+      filteredPoints = filterPricePointsByDays(fullData.data_points, days);
+    }
 
     return {
       ...fullData,
       days,
       data_points: filteredPoints,
     };
-  }, [fullData, timeRange]);
+  }, [fullData, timeRange, customDateRange]);
 
   // Determine when data was loaded
   const loadedAt = useMemo(() => {
@@ -131,7 +149,7 @@ export function ChartModal({ open, onOpenChange, indexId, indexName, cachedData:
               {loadedAt && (
                 <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3" />
-                  <span>Aktualisiert {formatRelativeTime(loadedAt)}</span>
+                  <span>Updated {formatRelativeTime(loadedAt)}</span>
                 </div>
               )}
             </div>
@@ -143,14 +161,14 @@ export function ChartModal({ open, onOpenChange, indexId, indexName, cachedData:
                 className="gap-2"
               >
                 <RefreshCw className="h-4 w-4" />
-                Aktualisieren
+                Refresh
               </Button>
             )}
           </div>
         </DialogHeader>
 
         {/* Time Range Selector */}
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           {TIME_RANGES.map((range) => (
             <Button
               key={range.value}
@@ -166,6 +184,25 @@ export function ChartModal({ open, onOpenChange, indexId, indexName, cachedData:
               {range.label}
             </Button>
           ))}
+          <Button
+            variant={timeRange === "custom" ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleTimeRangeChange("custom")}
+            disabled={isLoading}
+            className={cn(
+              "transition-all",
+              timeRange === "custom" && "shadow-glow"
+            )}
+          >
+            Custom
+          </Button>
+          {timeRange === "custom" && (
+            <DateRangePicker
+              value={customDateRange}
+              onChange={setCustomDateRange}
+              className="ml-2"
+            />
+          )}
         </div>
 
         {/* Chart Content */}
@@ -175,7 +212,7 @@ export function ChartModal({ open, onOpenChange, indexId, indexName, cachedData:
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="text-sm text-muted-foreground">Loading chart data...</p>
               <p className="text-xs text-muted-foreground">
-                Lädt 1 Jahr Historie mit robuster Preisberechnung
+                Loading 1 year history with robust price calculation
               </p>
             </div>
           ) : error ? (

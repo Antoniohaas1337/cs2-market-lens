@@ -21,12 +21,12 @@ const navItems = [
     icon: BarChart3,
   },
   {
-    title: "Indizes verwalten",
+    title: "Manage Indices",
     url: "/manage",
     icon: LayoutDashboard,
   },
   {
-    title: "Neuer Index",
+    title: "New Index",
     url: "/create",
     icon: Plus,
   },
